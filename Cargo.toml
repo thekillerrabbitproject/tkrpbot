@@ -13,3 +13,4 @@ tokio = { version = "0.2", features = ["full"] }
 tokio-postgres = "*"
 openssl = "*"
 postgres-openssl = "*"
+gotham = "*"
