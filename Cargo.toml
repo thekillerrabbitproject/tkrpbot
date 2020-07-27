@@ -14,3 +14,5 @@ tokio-postgres = "*"
 openssl = "*"
 postgres-openssl = "*"
 gotham = "*"
+serde = "*"
+reqwest = { version = "*", features = ["json"] }

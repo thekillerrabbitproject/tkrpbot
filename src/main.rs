@@ -5,6 +5,9 @@ use telegram_bot::*;
 use tokio_postgres::{Client};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
+use serde::Deserialize;
+use reqwest;
+use std::error::Error;
 
 use gotham::state::State;
 
@@ -19,7 +22,28 @@ pub fn say_hello(state: State) -> (State, &'static str) {
     (state, HELLO_WORLD)
 }
 
-async fn connect() -> Result<Client, Box<dyn std::error::Error>> {
+#[derive(Deserialize, Debug)]
+struct Posts {
+    title: String,
+    slug: String,
+}
+
+async fn get_latest(api: Api, message: Message) -> Result<(), Box<dyn Error>> {
+    let request_url = env::var("TKRP_TOP_5").expect("TKRP_TOP_5 not set");
+    let response = reqwest::get(&request_url).await?;
+    let posts: Vec<Posts> = response.json().await?;
+    
+    api.send(message.chat.text("Here are 3 the latest:")).await?;
+
+    for post in posts {
+        let link = format!("{} https://killerrabb.it/{}", post.title, post.slug);
+        api.send(message.chat.text(link)).await?;
+    }
+
+    Ok(())
+}
+
+async fn connect() -> Result<Client, Box<dyn Error>> {
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
 
     let mut builder = SslConnector::builder(SslMethod::tls())?;
@@ -39,7 +63,7 @@ async fn connect() -> Result<Client, Box<dyn std::error::Error>> {
 }
 
 
-async fn register(api: Api, message: Message) -> Result<(), Box<dyn std::error::Error>> {
+async fn register(api: Api, message: Message) -> Result<(), Box<dyn Error>> {
     let client = connect().await?;
     let chat_id = format!("{}", message.chat.id().clone());
 
@@ -48,7 +72,7 @@ async fn register(api: Api, message: Message) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-async fn send_to_all(api: Api, message: Message) -> Result<(), Box<dyn std::error::Error>> {
+async fn send_to_all(api: Api, message: Message) -> Result<(), Box<dyn Error>> {
     let client = connect().await?;
 
     let all_chat_id = client.query("SELECT chat_id from chat", &[]).await?;
@@ -71,23 +95,32 @@ async fn send_to_all(api: Api, message: Message) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-async fn send_message(api: Api, message: Message) -> Result<(), Box<dyn std::error::Error>> {
-    let username: Option<String> = message.from.username.clone();
+async fn send_message(api: Api, message: Message) -> Result<(), Box<dyn Error>> {
+    let username = message.clone().from.username;
     let admin = env::var("TELEGRAM_BOT_ADMIN").expect("TELEGRAM_BOT_ADMIN not set");
-    let message_text = message.text();
+    let message_text = message.clone().text();
 
     if message_text == Some(String::from("/start")) {
-        register(api.clone(), message).await?;
-    } else if username.unwrap() == admin {
-        let chat = message.chat.clone();
-        api.send(chat.text(format!("Sending to all!")))
-        .await?;
-        send_to_all(api, message).await?;
+        register(api.clone(), message.clone()).await?;
+    } else if message_text == Some(String::from("/latest")) {
+        get_latest(api.clone(), message.clone()).await?;
+    } else {
+        match username {
+            None => {},
+            Some(u) => {
+                if u == admin {
+                    let chat = message.clone().chat;
+                    api.send(chat.text(format!("Sending to all!")))
+                    .await?;
+                    send_to_all(api.clone(), message.clone()).await?;
+                }
+            }
+        }
     }
     Ok(())
 }
 
-async fn bot_init() -> Result<(), Box<dyn std::error::Error>> {
+async fn bot_init() -> Result<(), Box<dyn Error>> {
     let token = env::var("TELEGRAM_BOT_TOKEN").expect("TELEGRAM_BOT_TOKEN not set");
     let api = Api::new(token);
     let mut stream = api.stream();
@@ -103,7 +136,7 @@ async fn bot_init() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     let port: i64 = env::var("PORT")
         .unwrap_or_else(|_| "3000".to_string())
         .parse()
