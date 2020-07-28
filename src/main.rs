@@ -22,6 +22,16 @@ pub fn say_hello(state: State) -> (State, &'static str) {
     (state, HELLO_WORLD)
 }
 
+async fn get_help(api: Api, message: Message) -> Result<(), Box<dyn Error>> {
+    let msg = r#"*Here are the available functions*
+
+/latest to get the latest posts
+/help to get the list of commands"#;
+    let mut reply = message.chat.text(msg);
+    api.send(reply.parse_mode(ParseMode::Markdown)).await?;
+    Ok(())
+}
+
 #[derive(Deserialize, Debug)]
 struct Posts {
     title: String,
@@ -69,6 +79,7 @@ async fn register(api: Api, message: Message) -> Result<(), Box<dyn Error>> {
 
     client.execute("INSERT INTO chat (chat_id) values ($1) ON CONFLICT (chat_id) DO NOTHING ", &[&chat_id]).await?;
     api.send(message.chat.text("Thank you for subscribing!")).await?;
+    get_help(api.clone(), message.clone()).await?;
     Ok(())
 }
 
@@ -104,6 +115,8 @@ async fn send_message(api: Api, message: Message) -> Result<(), Box<dyn Error>> 
         register(api.clone(), message.clone()).await?;
     } else if message_text == Some(String::from("/latest")) {
         get_latest(api.clone(), message.clone()).await?;
+    } else if message_text == Some(String::from("/help")) {
+        get_help(api.clone(), message.clone()).await?;
     } else {
         match username {
             None => {},
