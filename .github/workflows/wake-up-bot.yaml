@@ -1,0 +1,18 @@
+name: Wake Up Bot
+on:
+  schedule:
+    - cron: '0 * * * *'
+
+jobs:
+  curl:
+    runs-on: ubuntu-latest
+    steps:
+    - name: wake up bitch
+      uses: wei/curl@master
+      with:
+        args: https://tkrpbot.herokuapp.com/
+    - name: wake up right now!
+      if: ${{ failure() }}
+      uses: wei/curl@master
+      with:
+        args: https://tkrpbot.herokuapp.com/
